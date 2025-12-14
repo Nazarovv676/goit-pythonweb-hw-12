@@ -67,10 +67,14 @@ services:
     name: contacts-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
+    # Allow connections from all sources (required by Render)
+    # For production, consider restricting to specific IPs
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all connections
 
 # PostgreSQL Database
 databases:
   - name: contacts-db
     plan: free
     databaseName: contacts_db
-
