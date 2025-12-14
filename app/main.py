@@ -64,26 +64,39 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     logger.info("Starting %s v%s", settings.app_name, settings.app_version)
     logger.info("Debug mode: %s", settings.debug)
+    logger.info("Database URL configured: %s", bool(settings.database_url))
+    logger.info("Redis URL: %s", settings.redis_url[:20] + "..." if settings.redis_url else "Not set")
 
     # Initialize Redis connection for caching and rate limiting
-    try:
-        redis_client = redis.from_url(
-            settings.redis_url,
-            encoding="utf-8",
-            decode_responses=True,
-        )
-        await redis_client.ping()
-        app.state.redis = redis_client
-        logger.info("Redis connected for caching and rate limiting")
-    except Exception as e:
-        logger.warning(f"Redis not available, caching disabled: {e}")
-        app.state.redis = None
+    app.state.redis = None
+    if settings.redis_url:
+        try:
+            redis_client = redis.from_url(
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+            )
+            await redis_client.ping()
+            app.state.redis = redis_client
+            logger.info("Redis connected for caching and rate limiting")
+        except Exception as e:
+            logger.warning(f"Redis not available, caching disabled: {e}")
+            app.state.redis = None
+    else:
+        logger.warning("Redis URL not configured, caching disabled")
+
+    logger.info("Application startup complete")
 
     yield
 
     # Cleanup
     if hasattr(app.state, "redis") and app.state.redis:
-        await app.state.redis.close()
+        try:
+            await app.state.redis.close()
+        except Exception as e:
+            logger.warning(f"Error closing Redis connection: {e}")
     logger.info("Shutting down %s", settings.app_name)
 
 
@@ -192,13 +205,17 @@ def root() -> RedirectResponse:
 
 
 @app.get("/health", tags=["health"])
-def health_check() -> dict[str, str]:
+def health_check() -> dict[str, str | bool]:
     """
     Health check endpoint.
 
     Returns service status and version for monitoring.
 
     Returns:
-        Dictionary with status and version.
+        Dictionary with status, version, and service availability.
     """
-    return {"status": "healthy", "version": settings.app_version}
+    return {
+        "status": "healthy",
+        "version": settings.app_version,
+        "redis_available": app.state.redis is not None,
+    }
