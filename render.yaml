@@ -1,0 +1,76 @@
+# render.yaml
+# Render Blueprint - Infrastructure as Code
+# Deploy all services with: New -> Blueprint -> Connect Repo
+
+services:
+  # Main API Service
+  - type: web
+    name: contacts-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: contacts-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: contacts-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PASSWORD_RESET_SECRET
+        generateValue: true
+      - key: USER_CACHE_TTL
+        value: "900"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: PASSWORD_RESET_EXPIRE_MINUTES
+        value: "30"
+      - key: VERIFICATION_TOKEN_EXPIRE_HOURS
+        value: "24"
+      - key: DEBUG
+        value: "false"
+      - key: CORS_ORIGINS_STR
+        value: "*"
+      - key: ME_RATE_LIMIT
+        value: "10/minute"
+      # Email settings - configure with your SMTP provider
+      - key: MAIL_SERVER
+        value: "smtp.gmail.com"
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        value: "noreply@example.com"
+      - key: MAIL_FROM_NAME
+        value: "Contacts API"
+      - key: MAIL_TLS
+        value: "true"
+      - key: MAIL_SSL
+        value: "false"
+      # Cloudinary - optional, for avatar uploads
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+  # Redis for caching and rate limiting
+  - type: redis
+    name: contacts-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+
+# PostgreSQL Database
+databases:
+  - name: contacts-db
+    plan: free
+    databaseName: contacts_db
+

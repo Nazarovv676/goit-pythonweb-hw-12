@@ -27,11 +27,32 @@ from app.models import Base
 # add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata
 
-# Get database URL from environment
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://postgres:mysecretpassword@localhost:5432/contacts_db",
-)
+
+def get_database_url() -> str:
+    """
+    Get database URL with proper driver for SQLAlchemy.
+
+    Handles Render.com and other platforms that provide URLs like:
+    - postgres://user:pass@host:5432/dbname
+    - postgresql://user:pass@host:5432/dbname
+
+    Converts to: postgresql+psycopg2://user:pass@host:5432/dbname
+    """
+    url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+psycopg2://postgres:mysecretpassword@localhost:5432/contacts_db",
+    )
+    # Handle Render's postgres:// format
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    # Handle postgresql:// without driver
+    elif url.startswith("postgresql://") and "+psycopg2" not in url:
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+
+# Get database URL
+DATABASE_URL = get_database_url()
 
 # Override sqlalchemy.url with environment variable
 config.set_main_option("sqlalchemy.url", DATABASE_URL)

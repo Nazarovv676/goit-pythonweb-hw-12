@@ -57,6 +57,29 @@ class Settings(BaseSettings):
     )
     db_echo: bool = False
 
+    @property
+    def database_url_sync(self) -> str:
+        """
+        Get database URL with psycopg2 driver for SQLAlchemy.
+
+        Render.com and other platforms provide URLs like:
+        postgresql://user:pass@host:5432/dbname
+
+        SQLAlchemy needs the driver specified:
+        postgresql+psycopg2://user:pass@host:5432/dbname
+
+        Returns:
+            Database URL with psycopg2 driver.
+        """
+        url = self.database_url
+        # Handle Render's postgres:// format
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        # Handle postgresql:// without driver
+        elif url.startswith("postgresql://") and "+psycopg2" not in url:
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return url
+
     # Application
     app_name: str = "Contacts API"
     app_version: str = "2.1.0"
@@ -88,6 +111,9 @@ class Settings(BaseSettings):
         Returns:
             List of allowed origin URLs.
         """
+        # Handle wildcard for production
+        if self.cors_origins_str.strip() == "*":
+            return ["*"]
         return [
             origin.strip()
             for origin in self.cors_origins_str.split(",")
