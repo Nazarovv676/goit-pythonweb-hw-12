@@ -1,5 +1,18 @@
 # app/routers/contacts.py
-"""Contacts API router with CRUD and search endpoints, scoped to authenticated user."""
+"""
+Contacts API router with CRUD and search endpoints, scoped to authenticated user.
+
+This module provides endpoints for managing contacts:
+- Create new contacts
+- List contacts with search and pagination
+- Get single contact by ID
+- Full and partial contact updates
+- Delete contacts
+- Get upcoming birthdays
+
+All endpoints are scoped to the authenticated user - users can only
+access and modify their own contacts.
+"""
 
 from typing import Annotated
 
@@ -36,12 +49,19 @@ def create_contact(
     """
     Create a new contact for the authenticated user.
 
-    - **first_name**: Contact's first name
-    - **last_name**: Contact's last name
-    - **email**: Unique email address (globally unique)
-    - **phone**: Phone number (format: +1234567890 or similar)
-    - **birthday**: Date of birth (YYYY-MM-DD)
-    - **notes**: Optional additional notes
+    Creates a contact with the provided information and associates
+    it with the current user. Contact emails must be globally unique.
+
+    Args:
+        data: Contact data including name, email, phone, birthday.
+        session: Database session.
+        current_user: The authenticated and verified user.
+
+    Returns:
+        The created contact with generated ID.
+
+    Raises:
+        HTTPException 409: If a contact with the given email already exists.
     """
     # Check for existing email (globally unique)
     existing = crud.get_contact_by_email(session, data.email)
@@ -93,17 +113,26 @@ def list_contacts(
     """
     List contacts for the authenticated user with optional filtering and pagination.
 
-    **Search behavior:**
-    - If `q` is provided: searches first_name OR last_name OR email (OR semantics)
-    - If individual fields (first_name, last_name, email) are provided without `q`:
-      uses AND semantics
-    - All searches are case-insensitive partial matches (ILIKE)
+    Supports two search modes:
+    - General search (`q` parameter): OR semantics across first_name, last_name, email
+    - Field-specific search: AND semantics between provided fields
 
-    **Pagination:**
-    - `limit`: Maximum items to return (1-100, default: 20)
-    - `offset`: Number of items to skip (default: 0)
+    All searches are case-insensitive partial matches (ILIKE).
 
-    **Note:** Only returns contacts owned by the authenticated user.
+    Args:
+        session: Database session.
+        current_user: The authenticated and verified user.
+        pagination: Pagination parameters (limit, offset).
+        q: General search query (optional).
+        first_name: Filter by first name (optional).
+        last_name: Filter by last name (optional).
+        email: Filter by email (optional).
+
+    Returns:
+        Paginated list of contacts with total count.
+
+    Note:
+        Only returns contacts owned by the authenticated user.
     """
     contacts, total = crud.list_contacts(
         session,
@@ -143,18 +172,23 @@ def get_upcoming_birthdays(
     """
     Get contacts whose birthdays fall within the next N days.
 
-    The endpoint calculates each contact's "next birthday" considering:
-    - If birthday month/day already passed this year → next year
-    - If not yet passed → this year
+    Calculates each contact's "next birthday" considering year rollover:
+    - If birthday has passed this year -> next year's occurrence
+    - If not yet passed -> this year's occurrence
 
-    **Leap year handling:**
-    - Feb 29 birthdays are treated as Feb 28 on non-leap years
+    Handles leap year birthdays (Feb 29) by treating them as Feb 28
+    on non-leap years.
 
-    **Parameters:**
-    - `days`: Number of days to look ahead (1-365, default: 7)
+    Args:
+        session: Database session.
+        current_user: The authenticated and verified user.
+        days: Number of days to look ahead (1-365, default: 7).
 
-    Returns contacts ordered by their upcoming birthday date.
-    **Note:** Only returns contacts owned by the authenticated user.
+    Returns:
+        List of contacts with upcoming birthdays, ordered by date.
+
+    Note:
+        Only returns contacts owned by the authenticated user.
     """
     contacts = crud.upcoming_birthdays(session, current_user.id, days=days)
     return [ContactRead.model_validate(c) for c in contacts]
@@ -176,7 +210,20 @@ def get_contact(
     """
     Get a single contact by their ID.
 
-    Returns 404 if the contact doesn't exist or belongs to another user.
+    Only returns the contact if it exists and belongs to the current user.
+    Returns 404 for both non-existent contacts and contacts belonging
+    to other users (to prevent information leakage).
+
+    Args:
+        contact_id: The contact's database ID.
+        session: Database session.
+        current_user: The authenticated and verified user.
+
+    Returns:
+        The contact data.
+
+    Raises:
+        HTTPException 404: If contact not found or belongs to another user.
     """
     contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:
@@ -205,8 +252,21 @@ def update_contact_full(
     """
     Perform a full update of a contact (all fields required).
 
-    Returns 404 if the contact doesn't exist or belongs to another user.
-    Returns 409 if the new email is already used by another contact.
+    Replaces all contact fields with the provided values.
+    If changing email, validates that the new email is not already in use.
+
+    Args:
+        contact_id: The contact's database ID.
+        data: Complete contact data for update.
+        session: Database session.
+        current_user: The authenticated and verified user.
+
+    Returns:
+        The updated contact data.
+
+    Raises:
+        HTTPException 404: If contact not found or belongs to another user.
+        HTTPException 409: If new email is already used by another contact.
     """
     contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:
@@ -254,8 +314,21 @@ def update_contact_partial(
     """
     Perform a partial update of a contact (only provided fields are updated).
 
-    Returns 404 if the contact doesn't exist or belongs to another user.
-    Returns 409 if the new email is already used by another contact.
+    Updates only the fields that are explicitly provided in the request.
+    If changing email, validates that the new email is not already in use.
+
+    Args:
+        contact_id: The contact's database ID.
+        data: Partial contact data with fields to update.
+        session: Database session.
+        current_user: The authenticated and verified user.
+
+    Returns:
+        The updated contact data.
+
+    Raises:
+        HTTPException 404: If contact not found or belongs to another user.
+        HTTPException 409: If new email is already used by another contact.
     """
     contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:
@@ -300,7 +373,19 @@ def delete_contact(
     """
     Delete a contact by their ID.
 
-    Returns 404 if the contact doesn't exist or belongs to another user.
+    Permanently removes the contact from the database.
+    Only the owner can delete their contacts.
+
+    Args:
+        contact_id: The contact's database ID.
+        session: Database session.
+        current_user: The authenticated and verified user.
+
+    Returns:
+        Success message.
+
+    Raises:
+        HTTPException 404: If contact not found or belongs to another user.
     """
     contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:

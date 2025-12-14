@@ -1,8 +1,8 @@
 # pyproject.toml
 [tool.poetry]
 name = "contacts-api"
-version = "2.0.0"
-description = "A REST API for managing contacts with FastAPI, SQLAlchemy 2.0, Pydantic v2, JWT authentication, and Cloudinary avatars"
+version = "2.1.0"
+description = "A REST API for managing contacts with FastAPI, SQLAlchemy 2.0, Pydantic v2, JWT authentication, role-based access, and Cloudinary avatars"
 authors = ["Developer <developer@example.com>"]
 readme = "README.md"
 packages = [{include = "app"}]
@@ -26,14 +26,18 @@ cloudinary = "^1.36.0"
 slowapi = "^0.1.9"
 redis = "^5.0.0"
 python-multipart = "^0.0.6"
+itsdangerous = "^2.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
 pytest-asyncio = "^0.23.0"
+pytest-cov = "^4.1.0"
 httpx = "^0.26.0"
 black = "^24.1.0"
 ruff = "^0.1.0"
 mypy = "^1.8.0"
+sphinx = "^7.2.0"
+sphinx-autodoc-typehints = "^1.25.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -56,6 +60,7 @@ exclude = '''
   | build
   | dist
   | alembic/versions
+  | docs/_build
 )/
 '''
 
@@ -94,5 +99,28 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=75"
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+    "app/__init__.py",
+    "app/core/__init__.py",
+    "app/routers/__init__.py",
+    "app/services/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

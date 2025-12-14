@@ -65,12 +65,18 @@ services:
       # Application
       DEBUG: ${DEBUG:-false}
       APP_NAME: ${APP_NAME:-Contacts API}
-      APP_VERSION: ${APP_VERSION:-2.0.0}
-      # Security
+      APP_VERSION: ${APP_VERSION:-2.1.0}
+      # Security - JWT
       SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-in-production}
       ALGORITHM: ${ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       VERIFICATION_TOKEN_EXPIRE_HOURS: ${VERIFICATION_TOKEN_EXPIRE_HOURS:-24}
+      # Security - Password Reset
+      PASSWORD_RESET_SECRET: ${PASSWORD_RESET_SECRET:-password-reset-secret-change-in-production}
+      PASSWORD_RESET_EXPIRE_MINUTES: ${PASSWORD_RESET_EXPIRE_MINUTES:-30}
+      # Redis & Caching
+      REDIS_URL: redis://redis:6379/0
+      USER_CACHE_TTL: ${USER_CACHE_TTL:-900}
       # CORS
       CORS_ORIGINS_STR: ${CORS_ORIGINS_STR:-http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000}
       # Email (Mailhog)
@@ -82,8 +88,6 @@ services:
       MAIL_TLS: "false"
       MAIL_SSL: "false"
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Contacts API}
-      # Redis
-      REDIS_URL: redis://redis:6379/0
       # Rate Limiting
       ME_RATE_LIMIT: ${ME_RATE_LIMIT:-5/minute}
       # Cloudinary

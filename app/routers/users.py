@@ -1,5 +1,17 @@
 # app/routers/users.py
-"""Users router for profile management and avatar upload."""
+"""
+Users router for profile management and avatar upload.
+
+This module provides endpoints for:
+- Getting current user profile
+- Uploading/updating avatar (admin only)
+
+Rate limiting is applied to the profile endpoint to prevent abuse.
+
+Policy changes (v2.1):
+- Avatar upload is now restricted to admin users only
+- Regular users receive 403 Forbidden on avatar update
+"""
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from slowapi import Limiter
@@ -7,7 +19,7 @@ from slowapi.util import get_remote_address
 
 from app import crud
 from app.core.config import get_settings
-from app.deps import CurrentVerifiedUser, DBSession
+from app.deps import CurrentAdmin, CurrentVerifiedUser, DBSession, invalidate_user_cache
 from app.schemas import UserRead
 from app.services.cloud import upload_avatar
 
@@ -31,9 +43,20 @@ async def get_current_user_profile(
     """
     Get the current authenticated user's profile.
 
+    Returns profile information including email, name, avatar URL,
+    verification status, and role.
+
     **Rate Limited**: 5 requests per minute per IP.
 
-    Requires a valid JWT token in the Authorization header.
+    Args:
+        request: HTTP request (for rate limiting).
+        current_user: The authenticated and verified user.
+
+    Returns:
+        User profile data (excluding sensitive fields like password).
+
+    Note:
+        Requires a valid JWT token in the Authorization header.
     """
     return UserRead.model_validate(current_user)
 
@@ -41,22 +64,42 @@ async def get_current_user_profile(
 @router.patch(
     "/me/avatar",
     response_model=UserRead,
-    summary="Upload user avatar",
+    summary="Upload user avatar (Admin only)",
     responses={
         400: {"description": "Invalid file type or upload failed"},
+        403: {"description": "Only admins can update avatars"},
     },
 )
 async def update_avatar(
-    current_user: CurrentVerifiedUser,
+    request: Request,
+    current_user: CurrentAdmin,
     session: DBSession,
     file: UploadFile = File(..., description="Avatar image file (JPEG, PNG, etc.)"),
 ) -> UserRead:
     """
     Upload or update the user's avatar image.
 
-    - Accepts JPEG, PNG, GIF, and WebP images
-    - Image is automatically resized to 250x250 and optimized
+    **Admin Only**: Only users with admin role can update their avatar.
+    Regular users will receive 403 Forbidden.
+
+    Image requirements:
+    - Accepted formats: JPEG, PNG, GIF, WebP
+    - Maximum size: 5MB
+    - Image is automatically resized to 250x250
     - Stored in Cloudinary with face detection cropping
+
+    Args:
+        request: HTTP request for cache invalidation.
+        current_user: The authenticated admin user.
+        session: Database session.
+        file: The uploaded image file.
+
+    Returns:
+        Updated user profile with new avatar URL.
+
+    Raises:
+        HTTPException 400: If file type invalid or upload fails.
+        HTTPException 403: If user is not an admin.
     """
     # Validate file type
     allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
@@ -81,6 +124,10 @@ async def update_avatar(
     try:
         avatar_url = await upload_avatar(file, current_user.id)
         updated_user = crud.update_user_avatar(session, current_user, avatar_url)
+
+        # Invalidate user cache after avatar change
+        await invalidate_user_cache(request, current_user.id)
+
         return UserRead.model_validate(updated_user)
     except ValueError as e:
         raise HTTPException(

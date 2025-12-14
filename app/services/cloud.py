@@ -89,4 +89,3 @@ def delete_avatar(user_id: int) -> bool:
     except Exception as e:
         logger.error(f"Failed to delete avatar for user {user_id}: {e}")
         return False
-

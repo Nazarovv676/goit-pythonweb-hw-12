@@ -25,6 +25,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # PyInstaller
 *.manifest
@@ -47,6 +48,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+junit.xml
 
 # Translations
 *.mo
@@ -54,12 +56,15 @@ coverage.xml
 
 # Environments
 .env
+.env.local
+.env.*.local
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+.python-version
 
 # IDE
 .idea/
@@ -67,6 +72,14 @@ venv.bak/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
 
 # mypy
 .mypy_cache/
@@ -77,12 +90,74 @@ dmypy.json
 .ruff_cache/
 
 # Poetry
-poetry.lock
+# Note: Do NOT ignore poetry.lock - it should be committed
+# poetry.lock  
 
 # Database
 *.db
 *.sqlite3
+*.sqlite
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
+
+# Docker
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# Logs
+*.log
+logs/
+log/
+
+# Sphinx documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Alembic
+# Don't ignore alembic versions - they should be committed
+# alembic/versions/*.py
+
+# Local configuration
+local_settings.py
+instance/
+
+# Secrets (should never be committed)
+*.pem
+*.key
+secrets/
+.secrets/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+tmp/
+temp/
+
+# Backup files
+*.bak
+*.backup
+
+# Redis dump
+dump.rdb
+
+# Static files (if generated)
+staticfiles/
+
+# Media files (if using local storage)
+media/
+uploads/
