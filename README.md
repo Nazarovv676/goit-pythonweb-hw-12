@@ -1,369 +1,298 @@
-# Contacts API
+# Contacts API v2.0
 
-A production-ready REST API for managing contacts built with FastAPI, SQLAlchemy 2.0, and Pydantic v2.
+A production-ready REST API for managing contacts, built with FastAPI, SQLAlchemy 2.0, and Pydantic v2. Features JWT authentication, email verification, rate limiting, CORS support, and Cloudinary avatar uploads.
 
 ## Features
 
-- **CRUD Operations**: Create, read, update (full/partial), and delete contacts
-- **Search**: Case-insensitive search by first name, last name, or email
-  - `q` parameter: OR semantics across all three fields
-  - Individual field parameters: AND semantics when combined
-- **Upcoming Birthdays**: Find contacts with birthdays in the next N days (default: 7, range: 1-365)
-- **Pagination**: Configurable limit (1-100, default: 20) and offset
-- **Validation**: Strict input validation with Pydantic v2
-  - Email validation via `EmailStr`
-  - Phone validation via regex: `^\+?[0-9()\-.\s]{7,20}$`
-- **Error Handling**: 409 Conflict for duplicate emails, 404 Not Found for missing resources
-- **API Documentation**: Interactive Swagger UI (`/docs`) and ReDoc (`/redoc`)
+- **Authentication**: JWT-based authentication with secure password hashing (bcrypt)
+- **Email Verification**: Users must verify their email before logging in
+- **Authorization**: Per-user data isolation - each user can only access their own contacts
+- **CRUD Operations**: Full create, read, update, delete functionality for contacts
+- **Search**: Flexible search by name or email with pagination
+- **Upcoming Birthdays**: Find contacts with birthdays in the next N days
+- **Avatar Upload**: Profile pictures stored in Cloudinary with automatic optimization
+- **Rate Limiting**: Protected endpoints are rate-limited (Redis-backed)
+- **CORS**: Configured for localhost development
 
 ## Tech Stack
 
 - **Python** 3.11+
-- **FastAPI** - Modern web framework
-- **SQLAlchemy 2.0** - ORM with declarative style
+- **FastAPI** - Modern, fast web framework
+- **SQLAlchemy 2.0** - ORM with async support
 - **Pydantic v2** - Data validation
-- **PostgreSQL** - Database
-- **Alembic** - Database migrations
-- **Poetry** - Dependency management
-- **Docker** - Containerization
+- **PostgreSQL** - Primary database
+- **Redis** - Rate limiting backend
+- **Cloudinary** - Image storage
+- **Mailhog** - Email testing
+- **Docker & Docker Compose** - Containerization
 
 ## Quick Start
 
-### Option 1: Docker (Recommended)
+### Prerequisites
 
-1. **Clone and navigate to the project:**
-   ```bash
-   cd goit-pythonweb-hw-08
-   ```
+- Docker and Docker Compose
+- Git
 
-2. **Create environment file:**
-   ```bash
-   cp .env.example .env
-   ```
+### 1. Clone and Setup
 
-3. **Start services (migrations run automatically):**
-   ```bash
-   docker-compose up -d
-   ```
+```bash
+git clone <repository-url>
+cd contacts-api
 
-4. **Access the API:**
-   - Swagger UI: http://localhost:8000/docs
-   - ReDoc: http://localhost:8000/redoc
-   - Health check: http://localhost:8000/health
+# Copy environment file
+cp .env.example .env
 
-### Option 2: Local Development
+# Edit .env with your settings (especially SECRET_KEY for production!)
+```
 
-1. **Prerequisites:**
-   - Python 3.11+
-   - PostgreSQL 15+
-   - Poetry
+### 2. Start Services
 
-2. **Install dependencies:**
-   ```bash
-   poetry install
-   ```
+```bash
+docker-compose up --build
+```
 
-3. **Create and configure `.env`:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your database credentials
-   ```
+This will start:
+- **API**: http://localhost:8000 (Swagger UI at /docs)
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
+- **Mailhog Web UI**: http://localhost:8025 (view verification emails)
 
-4. **Create PostgreSQL database:**
-   ```bash
-   createdb contacts_db
-   # Or with Docker:
-   docker run -d --name postgres -e POSTGRES_PASSWORD=mysecretpassword -e POSTGRES_DB=contacts_db -p 5432:5432 postgres:15-alpine
-   ```
+### 3. Test the API
 
-5. **Run migrations:**
-   ```bash
-   poetry run alembic upgrade head
-   ```
-
-6. **Start the server:**
-   ```bash
-   poetry run uvicorn app.main:app --reload
-   ```
-
-7. **Access the API:**
-   - Swagger UI: http://localhost:8000/docs
-   - ReDoc: http://localhost:8000/redoc
+1. Open http://localhost:8000/docs
+2. Register a new user via `POST /api/auth/register`
+3. Check Mailhog at http://localhost:8025 for the verification email
+4. Click the verification link or use `GET /api/auth/verify?token=...`
+5. Login via `POST /api/auth/login` to get JWT token
+6. Use the token in Swagger UI (click "Authorize" button)
+7. Create and manage contacts!
 
 ## API Endpoints
 
-Base prefix: `/api`
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/register` | Register new user (201) |
+| GET | `/api/auth/verify` | Verify email with token |
+| POST | `/api/auth/login` | Login and get JWT token |
+| POST | `/api/auth/resend-verification` | Resend verification email |
+
+### Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/users/me` | Get current user profile (rate-limited) |
+| PATCH | `/api/users/me/avatar` | Upload avatar image |
 
 ### Contacts
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/contacts` | Create a new contact (409 if email exists) |
-| GET | `/api/contacts` | List contacts with filters and pagination |
-| GET | `/api/contacts/{id}` | Get contact by ID (404 if not found) |
-| PUT | `/api/contacts/{id}` | Full update contact (all fields required) |
-| PATCH | `/api/contacts/{id}` | Partial update contact (only provided fields) |
-| DELETE | `/api/contacts/{id}` | Delete contact (404 if not found) |
-| GET | `/api/contacts/upcoming-birthdays` | Get contacts with upcoming birthdays |
+| POST | `/api/contacts` | Create contact (201) |
+| GET | `/api/contacts` | List contacts with search/pagination |
+| GET | `/api/contacts/{id}` | Get contact by ID |
+| PUT | `/api/contacts/{id}` | Full update contact |
+| PATCH | `/api/contacts/{id}` | Partial update contact |
+| DELETE | `/api/contacts/{id}` | Delete contact |
+| GET | `/api/contacts/upcoming-birthdays` | Get upcoming birthdays |
 
-### Query Parameters for List Endpoint
+## Authentication Flow
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `q` | string | None | General search (OR across first_name, last_name, email) |
-| `first_name` | string | None | Filter by first name (case-insensitive, partial match) |
-| `last_name` | string | None | Filter by last name (case-insensitive, partial match) |
-| `email` | string | None | Filter by email (case-insensitive, partial match) |
-| `limit` | int | 20 | Max items to return (1-100) |
-| `offset` | int | 0 | Number of items to skip |
+### Email Verification Policy
 
-### Query Parameters for Upcoming Birthdays
+**Unverified users cannot obtain JWT tokens.** The flow is:
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `days` | int | 7 | Number of days to look ahead (1-365) |
+1. User registers → receives verification email
+2. User clicks verification link → email marked as verified
+3. User can now login and receive JWT token
+4. JWT token required for all protected endpoints
 
-### Search Semantics
+### JWT Token Usage
 
-- **Using `q`**: Searches first_name OR last_name OR email (OR semantics)
-- **Using individual fields** (without `q`): Filters with AND semantics
-- **All searches**: Case-insensitive partial matches (ILIKE)
-
-## Contact Schema
-
-### Fields
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `first_name` | string | Yes | 1-255 characters |
-| `last_name` | string | Yes | 1-255 characters |
-| `email` | string | Yes | Valid email, unique, max 255 characters |
-| `phone` | string | Yes | 7-20 characters, format: `^\+?[0-9()\-.\s]{7,20}$` |
-| `birthday` | date | Yes | Format: YYYY-MM-DD |
-| `notes` | string | No | Optional, max 5000 characters |
-
-## Example Usage
-
-### Create a Contact
 ```bash
-curl -X POST "http://localhost:8000/api/contacts" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john.doe@example.com",
-    "phone": "+1234567890",
-    "birthday": "1990-05-15",
-    "notes": "Met at conference"
-  }'
+# Login to get token
+curl -X POST "http://localhost:8000/api/auth/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=yourpassword"
+
+# Use token in requests
+curl "http://localhost:8000/api/users/me" \
+  -H "Authorization: Bearer <your_token>"
 ```
 
-### List Contacts with Search
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql+psycopg2://postgres:mysecretpassword@db:5432/contacts_db` |
+| `SECRET_KEY` | JWT signing key (change in production!) | `your-super-secret-key...` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT token lifetime | `30` |
+| `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:3000,...` |
+| `REDIS_URL` | Redis connection string | `redis://redis:6379/0` |
+| `ME_RATE_LIMIT` | Rate limit for /api/users/me | `5/minute` |
+| `MAIL_SERVER` | SMTP server | `mailhog` |
+| `MAIL_PORT` | SMTP port | `1025` |
+| `CLOUDINARY_*` | Cloudinary credentials | (required for avatars) |
+
+### Cloudinary Setup
+
+1. Create account at https://cloudinary.com
+2. Get credentials from dashboard
+3. Add to `.env`:
+   ```
+   CLOUDINARY_CLOUD_NAME=your_cloud_name
+   CLOUDINARY_API_KEY=your_api_key
+   CLOUDINARY_API_SECRET=your_api_secret
+   ```
+
+## Development
+
+### Local Setup (without Docker)
+
 ```bash
-# General search (OR semantics)
-curl "http://localhost:8000/api/contacts?q=john"
+# Install Poetry (if not installed)
+curl -sSL https://install.python-poetry.org | python3 -
 
-# Filter by specific fields (AND semantics)
-curl "http://localhost:8000/api/contacts?first_name=john&last_name=doe"
+# Install dependencies
+poetry install
 
-# Pagination
-curl "http://localhost:8000/api/contacts?limit=10&offset=20"
+# Activate virtual environment
+poetry shell
+
+# Set environment variables
+export DATABASE_URL="postgresql+psycopg2://postgres:password@localhost:5432/contacts_db"
+
+# Run migrations
+alembic upgrade head
+
+# Start server
+uvicorn app.main:app --reload
 ```
 
-### Get Upcoming Birthdays
-```bash
-# Next 7 days (default)
-curl "http://localhost:8000/api/contacts/upcoming-birthdays"
-
-# Next 30 days
-curl "http://localhost:8000/api/contacts/upcoming-birthdays?days=30"
-```
-
-### Update a Contact
-```bash
-# Full update (PUT) - all fields required
-curl -X PUT "http://localhost:8000/api/contacts/1" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "first_name": "John",
-    "last_name": "Smith",
-    "email": "john.smith@example.com",
-    "phone": "+1234567890",
-    "birthday": "1990-05-15",
-    "notes": "Updated"
-  }'
-
-# Partial update (PATCH) - only provided fields updated
-curl -X PATCH "http://localhost:8000/api/contacts/1" \
-  -H "Content-Type: application/json" \
-  -d '{"notes": "Updated notes only"}'
-```
-
-### Delete a Contact
-```bash
-curl -X DELETE "http://localhost:8000/api/contacts/1"
-```
-
-## Birthday Calculation
-
-The upcoming birthdays endpoint computes each contact's "next birthday":
-
-1. If the birthday (month/day) has already passed this year → next year
-2. If not yet passed → this year
-3. Includes contacts whose next birthday falls within [today, today + days]
-
-**Leap Year Handling:**
-- Feb 29 birthdays are treated as Feb 28 on non-leap years
-
-## Running Tests
+### Running Tests
 
 ```bash
 # Run all tests
-poetry run pytest
-
-# Run with verbose output
-poetry run pytest -v
+pytest
 
 # Run with coverage
-poetry run pytest --cov=app
+pytest --cov=app tests/
 
 # Run specific test file
-poetry run pytest tests/test_contacts.py -v
+pytest tests/test_auth.py -v
+```
+
+### Code Quality
+
+```bash
+# Format code
+black app tests
+
+# Lint
+ruff check app tests
+
+# Type check
+mypy app
 ```
 
 ## Database Migrations
 
+### Create new migration
+
 ```bash
-# Create a new migration (autogenerate from models)
-poetry run alembic revision --autogenerate -m "description"
+alembic revision --autogenerate -m "description"
+```
 
-# Apply migrations
-poetry run alembic upgrade head
+### Apply migrations
 
-# Rollback one migration
-poetry run alembic downgrade -1
+```bash
+alembic upgrade head
+```
 
-# View migration history
-poetry run alembic history
+### Rollback migration
 
-# View current revision
-poetry run alembic current
+```bash
+alembic downgrade -1
 ```
 
 ## Project Structure
 
 ```
-.
+contacts-api/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py           # FastAPI application entry point
-│   ├── db.py             # Database engine and session management
-│   ├── models.py         # SQLAlchemy 2.0 models
-│   ├── schemas.py        # Pydantic v2 schemas
-│   ├── crud.py           # Data access layer
-│   ├── deps.py           # FastAPI dependencies
 │   ├── core/
-│   │   ├── __init__.py
-│   │   └── config.py     # Settings management (pydantic-settings)
-│   └── routers/
-│       ├── __init__.py
-│       └── contacts.py   # Contacts API router
+│   │   ├── config.py      # Settings management
+│   │   └── security.py    # Password hashing, JWT
+│   ├── routers/
+│   │   ├── auth.py        # Authentication endpoints
+│   │   ├── users.py       # User profile endpoints
+│   │   └── contacts.py    # Contacts CRUD endpoints
+│   ├── services/
+│   │   ├── email.py       # Email service
+│   │   └── cloud.py       # Cloudinary service
+│   ├── crud.py            # Database operations
+│   ├── db.py              # Database session
+│   ├── deps.py            # FastAPI dependencies
+│   ├── main.py            # Application entry point
+│   ├── models.py          # SQLAlchemy models
+│   └── schemas.py         # Pydantic schemas
 ├── alembic/
-│   ├── env.py            # Alembic environment configuration
-│   ├── script.py.mako    # Migration template
-│   └── versions/         # Migration files (auto-generated)
+│   └── versions/          # Migration files
 ├── tests/
-│   ├── __init__.py
-│   └── test_contacts.py  # API and unit tests
-├── .env.example          # Environment template
-├── .gitignore
-├── alembic.ini           # Alembic configuration
-├── docker-compose.yaml   # Docker Compose (db, api, migrate services)
-├── Dockerfile            # Multi-stage Docker build with Poetry
-├── pyproject.toml        # Poetry configuration and tool settings
-├── poetry.lock           # Locked dependencies
-├── requirements.txt      # Pip fallback for non-Poetry users
-└── README.md
+│   ├── test_auth.py       # Authentication tests
+│   └── test_contacts_authz.py  # Authorization tests
+├── .env.example           # Environment template
+├── docker-compose.yaml    # Docker services
+├── Dockerfile             # API container
+├── pyproject.toml         # Poetry config & dependencies
+└── poetry.lock            # Locked dependencies
 ```
 
-## Environment Variables
+## Data Models
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql+psycopg2://postgres:mysecretpassword@localhost:5432/contacts_db` | PostgreSQL connection string |
-| `DB_ECHO` | `false` | Enable SQLAlchemy query logging |
-| `APP_NAME` | `Contacts API` | Application name |
-| `APP_VERSION` | `1.0.0` | Application version |
-| `DEBUG` | `false` | Debug mode |
-| `CORS_ORIGINS` | `["http://localhost:3000","http://localhost:8000"]` | Allowed CORS origins |
+### User
 
-## Docker Services
+| Field | Type | Description |
+|-------|------|-------------|
+| id | int | Primary key |
+| email | str | Unique, indexed |
+| hashed_password | str | bcrypt hash |
+| full_name | str? | Optional |
+| avatar_url | str? | Cloudinary URL |
+| is_active | bool | Account status |
+| is_verified | bool | Email verified |
 
-| Service | Description |
-|---------|-------------|
-| `db` | PostgreSQL 15 database with health checks |
-| `migrate` | Runs Alembic migrations on startup |
-| `api` | FastAPI application (waits for db and migrate) |
+### Contact
 
-## Troubleshooting
+| Field | Type | Description |
+|-------|------|-------------|
+| id | int | Primary key |
+| first_name | str | Indexed |
+| last_name | str | Indexed |
+| email | str | Globally unique |
+| phone | str | Validated format |
+| birthday | date | For birthday search |
+| notes | str? | Optional |
+| user_id | int | Foreign key to User |
 
-### Database Connection Issues
+**Note**: Contact emails are globally unique (not per-user) for simplicity.
 
-1. **Check PostgreSQL is running:**
-   ```bash
-   docker ps | grep postgres
-   # or
-   docker-compose ps
-   ```
+## HTTP Status Codes
 
-2. **Verify connection string in `.env`:**
-   ```
-   DATABASE_URL=postgresql+psycopg2://postgres:mysecretpassword@localhost:5432/contacts_db
-   ```
-
-3. **Test connection:**
-   ```bash
-   psql -h localhost -U postgres -d contacts_db
-   ```
-
-### Migration Issues
-
-1. **Reset migrations (development only):**
-   ```bash
-   poetry run alembic downgrade base
-   poetry run alembic upgrade head
-   ```
-
-2. **Check current revision:**
-   ```bash
-   poetry run alembic current
-   ```
-
-3. **View migration history:**
-   ```bash
-   poetry run alembic history --verbose
-   ```
-
-### Docker Issues
-
-1. **Rebuild containers:**
-   ```bash
-   docker-compose down -v
-   docker-compose build --no-cache
-   docker-compose up -d
-   ```
-
-2. **View logs:**
-   ```bash
-   docker-compose logs -f api
-   docker-compose logs -f migrate
-   ```
-
-3. **Check container status:**
-   ```bash
-   docker-compose ps
-   ```
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 201 | Created (registration, contact creation) |
+| 400 | Bad request |
+| 401 | Unauthorized (invalid/missing token) |
+| 404 | Not found |
+| 409 | Conflict (duplicate email) |
+| 422 | Validation error |
+| 429 | Rate limit exceeded |
 
 ## License
 
-MIT
+MIT License

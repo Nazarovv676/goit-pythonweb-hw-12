@@ -1,3 +1,6 @@
+# alembic/env.py
+"""Alembic environment configuration for database migrations."""
+
 import os
 from logging.config import fileConfig
 

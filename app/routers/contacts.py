@@ -1,5 +1,5 @@
 # app/routers/contacts.py
-"""Contacts API router with CRUD and search endpoints."""
+"""Contacts API router with CRUD and search endpoints, scoped to authenticated user."""
 
 from typing import Annotated
 
@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 
 from app import crud
-from app.deps import DBSession, Pagination
+from app.deps import CurrentVerifiedUser, DBSession, Pagination
 from app.schemas import (
     ContactCreate,
     ContactListResponse,
@@ -28,18 +28,22 @@ router = APIRouter(prefix="/contacts", tags=["contacts"])
         409: {"description": "Contact with this email already exists"},
     },
 )
-def create_contact(data: ContactCreate, session: DBSession) -> ContactRead:
+def create_contact(
+    data: ContactCreate,
+    session: DBSession,
+    current_user: CurrentVerifiedUser,
+) -> ContactRead:
     """
-    Create a new contact with the provided information.
+    Create a new contact for the authenticated user.
 
     - **first_name**: Contact's first name
     - **last_name**: Contact's last name
-    - **email**: Unique email address
+    - **email**: Unique email address (globally unique)
     - **phone**: Phone number (format: +1234567890 or similar)
     - **birthday**: Date of birth (YYYY-MM-DD)
     - **notes**: Optional additional notes
     """
-    # Check for existing email
+    # Check for existing email (globally unique)
     existing = crud.get_contact_by_email(session, data.email)
     if existing:
         raise HTTPException(
@@ -48,7 +52,7 @@ def create_contact(data: ContactCreate, session: DBSession) -> ContactRead:
         )
 
     try:
-        contact = crud.create_contact(session, data)
+        contact = crud.create_contact(session, data, current_user.id)
         return ContactRead.model_validate(contact)
     except IntegrityError as e:
         session.rollback()
@@ -65,6 +69,7 @@ def create_contact(data: ContactCreate, session: DBSession) -> ContactRead:
 )
 def list_contacts(
     session: DBSession,
+    current_user: CurrentVerifiedUser,
     pagination: Pagination,
     q: Annotated[
         str | None,
@@ -86,7 +91,7 @@ def list_contacts(
     ] = None,
 ) -> ContactListResponse:
     """
-    List contacts with optional filtering and pagination.
+    List contacts for the authenticated user with optional filtering and pagination.
 
     **Search behavior:**
     - If `q` is provided: searches first_name OR last_name OR email (OR semantics)
@@ -97,9 +102,12 @@ def list_contacts(
     **Pagination:**
     - `limit`: Maximum items to return (1-100, default: 20)
     - `offset`: Number of items to skip (default: 0)
+
+    **Note:** Only returns contacts owned by the authenticated user.
     """
     contacts, total = crud.list_contacts(
         session,
+        current_user.id,
         q=q,
         first_name=first_name,
         last_name=last_name,
@@ -122,6 +130,7 @@ def list_contacts(
 )
 def get_upcoming_birthdays(
     session: DBSession,
+    current_user: CurrentVerifiedUser,
     days: Annotated[
         int,
         Query(
@@ -145,8 +154,9 @@ def get_upcoming_birthdays(
     - `days`: Number of days to look ahead (1-365, default: 7)
 
     Returns contacts ordered by their upcoming birthday date.
+    **Note:** Only returns contacts owned by the authenticated user.
     """
-    contacts = crud.upcoming_birthdays(session, days=days)
+    contacts = crud.upcoming_birthdays(session, current_user.id, days=days)
     return [ContactRead.model_validate(c) for c in contacts]
 
 
@@ -158,13 +168,17 @@ def get_upcoming_birthdays(
         404: {"description": "Contact not found"},
     },
 )
-def get_contact(contact_id: int, session: DBSession) -> ContactRead:
+def get_contact(
+    contact_id: int,
+    session: DBSession,
+    current_user: CurrentVerifiedUser,
+) -> ContactRead:
     """
     Get a single contact by their ID.
 
-    Returns 404 if the contact doesn't exist.
+    Returns 404 if the contact doesn't exist or belongs to another user.
     """
-    contact = crud.get_contact(session, contact_id)
+    contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -186,14 +200,15 @@ def update_contact_full(
     contact_id: int,
     data: ContactCreate,
     session: DBSession,
+    current_user: CurrentVerifiedUser,
 ) -> ContactRead:
     """
     Perform a full update of a contact (all fields required).
 
-    Returns 404 if the contact doesn't exist.
+    Returns 404 if the contact doesn't exist or belongs to another user.
     Returns 409 if the new email is already used by another contact.
     """
-    contact = crud.get_contact(session, contact_id)
+    contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -234,14 +249,15 @@ def update_contact_partial(
     contact_id: int,
     data: ContactUpdate,
     session: DBSession,
+    current_user: CurrentVerifiedUser,
 ) -> ContactRead:
     """
     Perform a partial update of a contact (only provided fields are updated).
 
-    Returns 404 if the contact doesn't exist.
+    Returns 404 if the contact doesn't exist or belongs to another user.
     Returns 409 if the new email is already used by another contact.
     """
-    contact = crud.get_contact(session, contact_id)
+    contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -276,13 +292,17 @@ def update_contact_partial(
         404: {"description": "Contact not found"},
     },
 )
-def delete_contact(contact_id: int, session: DBSession) -> MessageResponse:
+def delete_contact(
+    contact_id: int,
+    session: DBSession,
+    current_user: CurrentVerifiedUser,
+) -> MessageResponse:
     """
     Delete a contact by their ID.
 
-    Returns 404 if the contact doesn't exist.
+    Returns 404 if the contact doesn't exist or belongs to another user.
     """
-    contact = crud.get_contact(session, contact_id)
+    contact = crud.get_contact(session, contact_id, current_user.id)
     if not contact:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

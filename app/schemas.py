@@ -10,6 +10,58 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 PHONE_PATTERN = re.compile(r"^\+?[0-9()\-.\s]{7,20}$")
 
 
+# ============================================================================
+# User Schemas
+# ============================================================================
+
+
+class UserCreate(BaseModel):
+    """Schema for user registration."""
+
+    email: EmailStr = Field(..., max_length=255)
+    password: str = Field(..., min_length=8, max_length=100)
+    full_name: str | None = Field(None, max_length=255)
+
+
+class UserRead(BaseModel):
+    """Schema for reading user data (excludes password)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: EmailStr
+    full_name: str | None
+    avatar_url: str | None
+    is_active: bool
+    is_verified: bool
+
+
+class UserLogin(BaseModel):
+    """Schema for user login."""
+
+    email: EmailStr
+    password: str
+
+
+class Token(BaseModel):
+    """JWT token response schema."""
+
+    access_token: str
+    token_type: str = "bearer"
+
+
+class TokenPayload(BaseModel):
+    """JWT token payload schema."""
+
+    sub: int | None = None
+    email: str | None = None
+
+
+# ============================================================================
+# Contact Schemas
+# ============================================================================
+
+
 class ContactBase(BaseModel):
     """Base schema for contact data."""
 
@@ -66,6 +118,7 @@ class ContactRead(ContactBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    user_id: int
 
 
 class ContactListResponse(BaseModel):
@@ -77,7 +130,18 @@ class ContactListResponse(BaseModel):
     offset: int
 
 
+# ============================================================================
+# Generic Schemas
+# ============================================================================
+
+
 class MessageResponse(BaseModel):
     """Generic message response."""
 
     message: str
+
+
+class VerifyEmailRequest(BaseModel):
+    """Request schema for email verification."""
+
+    token: str
